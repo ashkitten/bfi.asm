@@ -1,100 +1,131 @@
 section .data
-	msg1 db "Enter text: "		; first prompt
+	msg1 db "Enter code: "		; first prompt
 	msg1_size equ $-msg1		; first prompt length
+
+	msg2 db "Enter input: "		; second prompt
+	msg2_size equ $-msg2		; second prompt length
+
 	endl db 10
 
+	array_ptr dd 0
+	code_ptr dd 0
+	input_ptr dd 0
+
 section .bss
-	buffer resb 1
-	array resb 256
-	array_len equ $-array
-	array_ptr resb 1
+	array resb 256			; array of characters for program
+	array_size equ $-array		; length of array
+
+	code resb 256
+	code_size equ $-code
+
+	input resb 256
+	input_size equ $-input
 
 section .text
 	global _start
 
 _start:
 	; initialize array
+	; loops through array till it gets to end
 	mov	eax, 0
 	.1:
-	mov	byte[array+eax], 48
-	add	eax, 1
-	cmp	eax, array_len
-	jne	.1
+	mov	byte[array+eax], 48	; initialize cell to 48 (ASCII 0)
+	add	eax, 1			; add 1 to eax
+	cmp	eax, array_size		; check if eax == array_size
+	jne	.1			; jump back to .1 if not equal
 
-	mov	byte[array_ptr], 0
-
-	; sys_write
-	mov	edx, msg1_size
-	mov	ecx, msg1
+	mov	edx, msg1_size		; msg1 length
+	mov	ecx, msg1		; address of msg1
 	mov	ebx, 1			; stdout
 	mov	eax, 4			; sys_write
 	int	80h			; syscall
 
-readwrite:
-	; sys_read
-	mov	edx, 1
-	mov	ecx, buffer
+	mov	edx, code_size		; code length
+	mov	ecx, code		; address of code
 	mov	ebx, 0			; stdin
 	mov	eax, 3			; sys_read
 	int	80h			; syscall
 
-	; print what we got from sys_read
-	; sys_write
-	mov	edx, 1
-	mov	ecx, buffer
+	mov	edx, msg2_size		; msg2 length
+	mov	ecx, msg2		; address of msg2
 	mov	ebx, 1			; stdout
 	mov	eax, 4			; sys_write
 	int	80h			; syscall
 
-	mov	eax, [array_ptr]
+	mov	edx, input_size		; input length
+	mov	ecx, input		; address of input
+	mov	ebx, 0			; stdin
+	mov	eax, 3			; sys_read
+	int	80h			; syscall
 
-	cmp	byte[buffer], 43	; if buffer character is a "+"
+interpret:
+	mov	eax, dword[array_ptr]	; use eax to store array ptr for operations
+	mov	ebx, dword[code_ptr]		; use ebx to store code ptr for operations
+
+
+	cmp	byte[code+ebx], 43	; if buffer character is a "+"
 	jne	.1			; conditional jump
 	inc	byte[array+eax]		; add 1
 	.1:				; label for conditonal
 
-	cmp	byte[buffer], 45	; if buffer character is a "-"
+
+	cmp	byte[code+ebx], 45	; if buffer character is a "-"
 	jne	.2			; conditional jump
 	dec	byte[array+eax]		; subtract 1
 	.2:				; label for conditional
 
-	cmp	byte[buffer], 60	; if buffer character is a "<"
+
+	cmp	byte[code+ebx], 60	; if buffer character is a "<"
 	jne	.3
 	dec	eax
 	.3:
 
-	cmp	byte[buffer], 62	; if buffer character is a ">"
+
+	cmp	byte[code+ebx], 62	; if buffer character is a ">"
 	jne	.4
 	inc	eax
 	.4:
 
+
+	cmp	byte[code+ebx], 46	; if buffer character is a "."
+	jne	.5
+
+	mov	edx, 1			; length 1
+
+	lea	ecx, [array+eax]	; address of array+array_ptr
+
+	push	ebx			; store register value to stack
+	mov	ebx, 1			; stdout
+
+	push	eax			; store register value to stack
+	mov	eax, 4			; sys_write
+
+	int	80h			; syscall
+
+	pop	eax			; restore register values
+	pop	ebx
+
+	.5:
+
+
+	inc	ebx			; move to next code byte
+
 	; put array ptr back
-	mov	[array_ptr], eax
+	mov	dword[array_ptr], eax
+	mov	dword[code_ptr], ebx
 
-	; this is so if we overflow the buffer then it'll read more
-	; if the last byte we printed is a linefeed, we're done
-	; if not, there must be more to read
-	cmp	byte[ecx], 10
-	jne	readwrite
+	cmp	byte[code+ebx], 10	; if buffer character is a linefeed
+	jne	interpret		; go to next character
 
-	; write out the array
-	; sys_write
-	mov	edx, array_len
-	mov	ecx, array
+	; endl
+	mov	edx, 1			; length 1
+	mov	ecx, endl		; address of endl
 	mov	ebx, 1			; stdout
 	mov	eax, 4			; sys_write
 	int	80h			; syscall
-
-	; endl
-	; sys_write
-	mov	edx, 1
-	mov	ecx, endl
-	mov	ebx, 1
-	mov	eax, 4
-	int	80h
 
 exit:
 	; syscall exit(0)
 	mov	eax, 1			; syscall_exit
 	mov	ebx, 0 			; status 0
-	int	80h			; call
+	int	80h			; syscall
