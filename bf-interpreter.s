@@ -60,59 +60,59 @@ _start:
 
 interpret:
 	mov	eax, dword[array_ptr]	; use eax to store array ptr for operations
-	mov	ebx, dword[code_ptr]		; use ebx to store code ptr for operations
-
+	mov	ebx, dword[code_ptr]	; use ebx to store code ptr for operations
+	mov	ecx, dword[input_ptr]
 
 	cmp	byte[code+ebx], 43	; if buffer character is a "+"
 	jne	.1			; conditional jump
 	inc	byte[array+eax]		; add 1
 	.1:				; label for conditonal
 
-
 	cmp	byte[code+ebx], 45	; if buffer character is a "-"
 	jne	.2			; conditional jump
 	dec	byte[array+eax]		; subtract 1
 	.2:				; label for conditional
-
 
 	cmp	byte[code+ebx], 60	; if buffer character is a "<"
 	jne	.3
 	dec	eax
 	.3:
 
-
 	cmp	byte[code+ebx], 62	; if buffer character is a ">"
 	jne	.4
 	inc	eax
 	.4:
 
-
 	cmp	byte[code+ebx], 46	; if buffer character is a "."
 	jne	.5
-
 	mov	edx, 1			; length 1
-
+	push	ecx
 	lea	ecx, [array+eax]	; address of array+array_ptr
-
 	push	ebx			; store register value to stack
 	mov	ebx, 1			; stdout
-
 	push	eax			; store register value to stack
 	mov	eax, 4			; sys_write
-
 	int	80h			; syscall
-
 	pop	eax			; restore register values
 	pop	ebx
-
+	pop	ecx
 	.5:
 
+	cmp	byte[code+ebx], 44	; if buffer character is a ","
+	jne	.6
+	push	ebx			; store ebx value to stack
+	mov	ebx, dword[input+ecx]	; use ebx as intermediate register
+	mov	dword[array+eax], ebx
+	pop	ebx
+	inc	ecx
+	.6:
 
 	inc	ebx			; move to next code byte
 
 	; put array ptr back
 	mov	dword[array_ptr], eax
 	mov	dword[code_ptr], ebx
+	mov	dword[input_ptr], ecx
 
 	cmp	byte[code+ebx], 10	; if buffer character is a linefeed
 	jne	interpret		; go to next character
