@@ -17,9 +17,7 @@ section .data
 	input_size equ $-array
 	input_ptr dd 0
 
-	bracket_skip dd 0
-
-section .bss
+	skip_to_brackets dd 0
 
 section .text
 	global _start
@@ -37,6 +35,8 @@ _start:
 	mov	eax, 3			; sys_read
 	int	80h			; syscall
 
+	mov	byte[code+eax-1], 0	; strip last character (linefeed)
+
 	mov	edx, msg2_size		; msg2 length
 	mov	ecx, msg2		; address of msg2
 	mov	ebx, 1			; stdout
@@ -49,12 +49,14 @@ _start:
 	mov	eax, 3			; sys_read
 	int	80h			; syscall
 
+	mov	byte[input+eax-1], 0	; strip last character (linefeed)
+
 interpret:
 	mov	eax, dword[array_ptr]	; use eax to store array ptr for operations
 	mov	ebx, dword[code_ptr]	; use ebx to store code ptr for operations
 	mov	ecx, dword[input_ptr]
 
-	cmp	dword[bracket_skip], 0
+	cmp	dword[skip_to_brackets], 0
 	jne	.bracketskip
 
 	cmp	byte[code+ebx], "+"	; if buffer character is a "+"
@@ -106,7 +108,7 @@ interpret:
 	jne	.7
 	cmp	byte[array+eax], 0	; if current array cell is a 0
 	jne	.7.1
-	inc	byte[bracket_skip]	; increase bracket_skip
+	inc	byte[skip_to_brackets]	; increase skip_to_brackets
 	jmp	.7
 	.7.1:
 	push	ebx			; else push ebx
@@ -114,9 +116,9 @@ interpret:
 
 	cmp	byte[code+ebx], "]"	; if buffer character is a "]"
 	jne	.8
-	cmp	byte[bracket_skip], 0
+	cmp	byte[skip_to_brackets], 0
 	je	.8.1
-	dec	byte[bracket_skip]	; decrease bracket_skip
+	dec	byte[skip_to_brackets]	; decrease skip_to_brackets
 	.8.1:
 	cmp	byte[array+eax], 0	; if current array cell is not 0
 	je	.8.2
@@ -134,8 +136,17 @@ interpret:
 	mov	dword[code_ptr], ebx
 	mov	dword[input_ptr], ecx
 
-	cmp	byte[code+ebx], 10	; if buffer character is a linefeed
+	cmp	byte[code+ebx], 0	; if code character is not 0
 	jne	interpret		; go to next character
+
+	; print linefeed
+	push	0xA			; push linefeed character to stack
+	mov	edx, 1			; length 1
+	lea	ecx, [esp]		; load address of linefeed character on stack
+	mov	ebx, 1			; stdout
+	mov	eax, 4			; sys_write
+	int	80h			; syscall
+	add	esp, 4			; pop linefeed character off stack
 
 exit:
 	mov	eax, 1			; syscall_exit
