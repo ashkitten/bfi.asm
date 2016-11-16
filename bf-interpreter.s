@@ -5,35 +5,26 @@ section .data
 	msg2 db "Enter input: "		; second prompt
 	msg2_size equ $-msg2		; second prompt length
 
-	endl db 10
-
+	array times 65536 db 0		; array of characters for program
+	array_size equ $-array
 	array_ptr dd 0
+
+	code times 65536 db 0		; array of characters for program
+	code_size equ $-array
 	code_ptr dd 0
+
+	input times 65536 db 0		; array of characters for program
+	input_size equ $-array
 	input_ptr dd 0
 
+	bracket_skip dd 0
+
 section .bss
-	array resb 256			; array of characters for program
-	array_size equ $-array		; length of array
-
-	code resb 256
-	code_size equ $-code
-
-	input resb 256
-	input_size equ $-input
 
 section .text
 	global _start
 
 _start:
-	; initialize array
-	; loops through array till it gets to end
-	mov	eax, 0
-	.1:
-	mov	byte[array+eax], 48	; initialize cell to 48 (ASCII 0)
-	add	eax, 1			; add 1 to eax
-	cmp	eax, array_size		; check if eax == array_size
-	jne	.1			; jump back to .1 if not equal
-
 	mov	edx, msg1_size		; msg1 length
 	mov	ecx, msg1		; address of msg1
 	mov	ebx, 1			; stdout
@@ -63,27 +54,30 @@ interpret:
 	mov	ebx, dword[code_ptr]	; use ebx to store code ptr for operations
 	mov	ecx, dword[input_ptr]
 
-	cmp	byte[code+ebx], 43	; if buffer character is a "+"
+	cmp	dword[bracket_skip], 0
+	jne	.bracketskip
+
+	cmp	byte[code+ebx], "+"	; if buffer character is a "+"
 	jne	.1			; conditional jump
 	inc	byte[array+eax]		; add 1
 	.1:				; label for conditonal
 
-	cmp	byte[code+ebx], 45	; if buffer character is a "-"
+	cmp	byte[code+ebx], "-"	; if buffer character is a "-"
 	jne	.2			; conditional jump
 	dec	byte[array+eax]		; subtract 1
 	.2:				; label for conditional
 
-	cmp	byte[code+ebx], 60	; if buffer character is a "<"
+	cmp	byte[code+ebx], "<"	; if buffer character is a "<"
 	jne	.3
 	dec	eax
 	.3:
 
-	cmp	byte[code+ebx], 62	; if buffer character is a ">"
+	cmp	byte[code+ebx], ">"	; if buffer character is a ">"
 	jne	.4
 	inc	eax
 	.4:
 
-	cmp	byte[code+ebx], 46	; if buffer character is a "."
+	cmp	byte[code+ebx], "."	; if buffer character is a "."
 	jne	.5
 	mov	edx, 1			; length 1
 	push	ecx
@@ -98,14 +92,40 @@ interpret:
 	pop	ecx
 	.5:
 
-	cmp	byte[code+ebx], 44	; if buffer character is a ","
+	cmp	byte[code+ebx], ","	; if buffer character is a ","
 	jne	.6
-	push	ebx			; store ebx value to stack
-	mov	ebx, dword[input+ecx]	; use ebx as intermediate register
-	mov	dword[array+eax], ebx
-	pop	ebx
-	inc	ecx
+	lea	esi, [input+ecx]	; prepare for movsb
+	lea	edi, [array+eax]	; by loading esi and dsi with src and dest strings	
+	movsb				; mov string byte
+	inc	ecx			; next input byte
 	.6:
+
+	.bracketskip:
+
+	cmp	byte[code+ebx], "["	; if buffer character is a "["
+	jne	.7
+	cmp	byte[array+eax], 0	; if current array cell is a 0
+	jne	.7.1
+	inc	byte[bracket_skip]	; increase bracket_skip
+	jmp	.7
+	.7.1:
+	push	ebx			; else push ebx
+	.7:
+
+	cmp	byte[code+ebx], "]"	; if buffer character is a "]"
+	jne	.8
+	cmp	byte[bracket_skip], 0
+	je	.8.1
+	dec	byte[bracket_skip]	; decrease bracket_skip
+	.8.1:
+	cmp	byte[array+eax], 0	; if current array cell is not 0
+	je	.8.2
+	pop	ebx			; pop ebx
+	dec	ebx
+	jmp	.8
+	.8.2:
+	add	esp, 4
+	.8:
 
 	inc	ebx			; move to next code byte
 
@@ -117,15 +137,7 @@ interpret:
 	cmp	byte[code+ebx], 10	; if buffer character is a linefeed
 	jne	interpret		; go to next character
 
-	; endl
-	mov	edx, 1			; length 1
-	mov	ecx, endl		; address of endl
-	mov	ebx, 1			; stdout
-	mov	eax, 4			; sys_write
-	int	80h			; syscall
-
 exit:
-	; syscall exit(0)
 	mov	eax, 1			; syscall_exit
 	mov	ebx, 0 			; status 0
 	int	80h			; syscall
