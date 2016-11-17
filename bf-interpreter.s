@@ -5,24 +5,28 @@ section .data
 	msg2 db "Enter input: "		; second prompt
 	msg2_size equ $-msg2		; second prompt length
 
-	array times 65536 db 0		; array of characters for program
-	array_size equ $-array
 	array_ptr dd 0
-
-	code times 65536 db 0		; array of characters for program
-	code_size equ $-array
 	code_ptr dd 0
-
-	input times 65536 db 0		; array of characters for program
-	input_size equ $-array
 	input_ptr dd 0
 
 	skip_to_brackets dd 0
+
+section .bss
+	array resb 65536
+	array_size equ $-array
+	
+	code resb 65536
+	code_size equ $-code
+
+	input resb 65536
+	input_size equ $-input
 
 section .text
 	global _start
 
 _start:
+	mov	byte[array], 0		; initialize array to 0
+
 	mov	edx, msg1_size		; msg1 length
 	mov	ecx, msg1		; address of msg1
 	mov	ebx, 1			; stdout
