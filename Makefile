@@ -10,3 +10,8 @@ run: bf-interpreter
 stripped: bf-interpreter.s
 	nasm -f elf -F dwarf bf-interpreter.s
 	ld -m elf_i386 -s -o bf-interpreter bf-interpreter.o
+
+.PHONY: clean
+
+clean:
+	rm bf-interpreter.o bf-interpreter
