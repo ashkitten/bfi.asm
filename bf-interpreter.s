@@ -1,158 +1,177 @@
-section .data
-  msg1 db "Enter code: "           ; first prompt
-  msg1_size equ $-msg1             ; first prompt length
-
-  msg2 db "Enter input: "          ; second prompt
-  msg2_size equ $-msg2             ; second prompt length
-
-  array_ptr dd 0
-  code_ptr dd 0
-  input_ptr dd 0
-
-  skip_to_brackets dd 0
-
 section .bss
-  array resb 65536
-  array_size equ $-array
-
-  code resb 65536
-  code_size equ $-code
-
-  input resb 65536
-  input_size equ $-input
+    array   resb 30000                  ; "standard" array size
+    code    resb 0x80000
+    input   resb 0x80000
+    size    equ  0x80000
 
 section .text
-  global _start
+    global  _start
 
 _start:
-  mov  byte[array], 0              ; initialize array to 0
+    mov     edx, size                   ; length of code and input
 
-  mov  edx, msg1_size              ; msg1 length
-  mov  ecx, msg1                   ; address of msg1
-  mov  ebx, 1                      ; stdout
-  mov  eax, 4                      ; sys_write
-  int  80h                         ; syscall
+    ; the reason we use regular 32-bit registers here is because if we use
+    ; 8-bit registers it will screw with the return value of the syscall
+    ; and not reset the rest of eax to 0 like we need
 
-  mov  edx, code_size              ; code length
-  mov  ecx, code                   ; address of code
-  mov  ebx, 0                      ; stdin
-  mov  eax, 3                      ; sys_read
-  int  80h                         ; syscall
+    mov     ecx, code                   ; address of code
+    xor     ebx, ebx                    ; xor ebx to 0 (stdin)
+    mov     eax, 3                      ; mov 3 to eax (sys_read)
+    int     0x80                        ; syscall
 
-  mov  byte[code+eax-1], 0         ; strip last character (linefeed)
+    ; no need to strip linefeed because it's just code
 
-  mov  edx, msg2_size              ; msg2 length
-  mov  ecx, msg2                   ; address of msg2
-  mov  ebx, 1                      ; stdout
-  mov  eax, 4                      ; sys_write
-  int  80h                         ; syscall
+    mov     ecx, input                  ; address of input
+    xor     ebx, ebx                    ; xor ebx to 0 (stdin)
+    mov     eax, 3                      ; mov 3 to eax (sys_read)
+    int     0x80                        ; syscall
 
-  mov  edx, input_size             ; input length
-  mov  ecx, input                  ; address of input
-  mov  ebx, 0                      ; stdin
-  mov  eax, 3                      ; sys_read
-  int  80h                         ; syscall
+    mov     byte[input + eax - 1], 0    ; strip last character (linefeed)
 
-  mov  byte[input+eax-1], 0        ; strip last character (linefeed)
+    ; initialize pointer registers
+    mov     eax, array
+    mov     ebx, code
+    ; no need to initialize ecx to the address of input,
+    ; because it's already there
+
+    ; starting bracket depth is 0
+    xor     edx, edx
 
 interpret:
-  mov  eax, dword[array_ptr]       ; use eax to store array ptr for operations
-  mov  ebx, dword[code_ptr]        ; use ebx to store code ptr for operations
-  mov  ecx, dword[input_ptr]
+    ; eax points to the position in the array
+    ; ebx points to the position in the code
+    ; ecx points to the position in the input
+    ; edx tells us the bracket depth
+    ; we abuse ebp to serve as a bracket skip indicator
 
-  cmp  dword[skip_to_brackets], 0
-  jne  .bracketskip
+    cmp     ebp, 0
+    jne     .bracketskip
 
-  cmp  byte[code+ebx], "+"         ; if buffer character is a "+"
-  jne  .1                          ; conditional jump
-  inc  byte[array+eax]             ; add 1
-  .1:                              ; label for conditonal
+    .default:
+    ; case "+"
+    cmp     byte[ebx], "+"              ; if buffer character is a "+"
+    je      plus
+    ; case "-"
+    cmp     byte[ebx], "-"              ; if buffer character is a "-"
+    je      minus
+    ; case "<"
+    cmp     byte[ebx], "<"              ; if buffer character is a "<"
+    je      arrayprev
+    ; case ">"
+    cmp     byte[ebx], ">"              ; if buffer character is a ">"
+    je      arraynext
+    ; case "."
+    cmp     byte[ebx], "."              ; if buffer character is a "."
+    je      print
+    ; case ","
+    cmp     byte[ebx], ","              ; if buffer character is a ","
+    je      getchar
+    ; case "["
+    cmp     byte[ebx], "["              ; if buffer character is a "["
+    je      bracketopen
+    ; case "]"
+    cmp     byte[ebx], "]"              ; if buffer character is a "]"
+    je      bracketclose
 
-  cmp  byte[code+ebx], "-"         ; if buffer character is a "-"
-  jne  .2                          ; conditional jump
-  dec  byte[array+eax]             ; subtract 1
-  .2:                              ; label for conditional
+    ; no need to jump to post here because if it didn't match
+    ; the previous bracket cases, it won't match the next ones
 
-  cmp  byte[code+ebx], "<"         ; if buffer character is a "<"
-  jne  .3
-  dec  eax
-  .3:
+    .bracketskip:
 
-  cmp  byte[code+ebx], ">"         ; if buffer character is a ">"
-  jne  .4
-  inc  eax
-  .4:
+    ; case "["
+    cmp     byte[ebx], "["              ; if buffer character is a "["
+    je      bracketopen_skip
+    ; case "]"
+    cmp     byte[ebx], "]"              ; if buffer character is a "]"
+    je      bracketclose_skip
 
-  cmp  byte[code+ebx], "."         ; if buffer character is a "."
-  jne  .5
-  mov  edx, 1                      ; length 1
-  push  ecx
-  lea  ecx, [array+eax]            ; address of array+array_ptr
-  push  ebx                        ; store register value to stack
-  mov  ebx, 1                      ; stdout
-  push  eax                        ; store register value to stack
-  mov  eax, 4                      ; sys_write
-  int  80h                         ; syscall
-  pop  eax                         ; restore register values
-  pop  ebx
-  pop  ecx
-  .5:
+    jmp     post
 
-  cmp  byte[code+ebx], ","         ; if buffer character is a ","
-  jne  .6
-  lea  esi, [input+ecx]            ; prepare for movsb
-  lea  edi, [array+eax]            ; by loading esi and dsi with src and dest strings
-  movsb                            ; mov string byte
-  inc  ecx                         ; next input byte
-  .6:
+plus:
+    inc     byte[eax]                   ; add 1
 
-  .bracketskip:
+    jmp     post
 
-  cmp  byte[code+ebx], "["         ; if buffer character is a "["
-  jne  .7
-  cmp  byte[array+eax], 0          ; if current array cell is a 0
-  jne  .7.1
-  inc  byte[skip_to_brackets]      ; increase skip_to_brackets
-  jmp  .7
-  .7.1:
-  push  ebx                        ; else push ebx
-  .7:
+minus:
+    dec     byte[eax]                   ; subtract 1
 
-  cmp  byte[code+ebx], "]"         ; if buffer character is a "]"
-  jne  .8
-  cmp  byte[skip_to_brackets], 0
-  je  .8.1
-  dec  byte[skip_to_brackets]      ; decrease skip_to_brackets
-  .8.1:
-  cmp  byte[array+eax], 0          ; if current array cell is not 0
-  je  .8.2
-  pop  ebx                         ; pop ebx
-  dec  ebx
-  jmp  .8
-  .8.2:
-  add  esp, 4
-  .8:
+    jmp     post
 
-  inc  ebx                         ; move to next code byte
+arrayprev:
+    dec     eax                         ; decrease array pointer
 
-  ; put array ptr back
-  mov  dword[array_ptr], eax
-  mov  dword[code_ptr], ebx
-  mov  dword[input_ptr], ecx
+    jmp     post
 
-  cmp  byte[code+ebx], 0           ; if code character is not 0
-  jne  interpret                   ; go to next character
+arraynext:
+    inc     eax                         ; increase array pointer
 
-  ; print linefeed
-  push  0xA                        ; push linefeed character to stack
-  mov  edx, 1                      ; length 1
-  lea  ecx, [esp]                  ; load address of linefeed character on stack
-  mov  ebx, 1                      ; stdout
-  mov  eax, 4                      ; sys_write
-  int  80h                         ; syscall
-  add  esp, 4                      ; pop linefeed character off stack
+    jmp    post
+
+print:
+    push    edx                         ; save bracket skip to stack
+    xor     edx, edx                    ; xor edx to 0
+    inc     edx                         ; increment edx to 1 (length)
+
+    push    ecx                         ; save input pointer to stack
+    lea     ecx, [eax]                  ; address of array pointer
+
+    push    ebx                         ; save input pointer to stack
+    xor     ebx, ebx                    ; xor ebx to 0
+    inc     ebx                         ; increase ebx to 1 (stdout)
+
+    push    eax                         ; save array pointer to stack
+    mov     eax, 4                      ; mov 4 to eax (sys_write)
+    int     0x80                        ; syscall
+
+    ; restore register values
+    pop     eax
+    pop     ebx
+    pop     ecx
+    pop     edx
+
+    jmp     post
+
+getchar:
+    lea     esi, [ecx]                  ; prepare for movsb
+    lea     edi, [eax]                  ; by loading esi and dsi with src and dest strings
+    movsb                               ; mov string byte
+    inc     ecx                         ; next input byte
+
+    jmp     post
+
+bracketopen:
+    cmp     byte[eax], 0                ; if current array cell is 0
+    je      bracketopen_skip
+
+    push    ebx                         ; else push ebx
+    inc     edx                         ; increase bracket depth
+
+    jmp     post
+
+bracketclose:
+    pop     ebx                         ; pop ebx
+    dec     ebx                         ; move back to previous character
+    dec     edx                         ; decrease bracket depth
+
+    jmp     post
+
+bracketopen_skip:
+    inc     ebp                         ; increase bracket skip
+
+    jmp     post
+
+bracketclose_skip:
+    dec     ebp                         ; decrease bracket skip
+
+    ; no need to jmp to post because we're already there
+
+post:
+    inc     ebx                        ; move to next code byte
+    cmp     byte[ebx], 0
+    jne     interpret
 
 exit:
-  mov  eax, 1                      ; syscall_exit
-  mov  ebx, 0                      ; status 0
-  int  80h                         ; syscall
+    xor     eax, eax                    ; xor eax to 0
+    inc     eax                         ; increment eax to 1 (sys_exit)
+    xor     ebx, ebx                    ; xor ebx to 0 (exit code 0)
+    int     0x80                        ; syscall
