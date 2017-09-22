@@ -1,4 +1,4 @@
-A brainfuck interpreter written in pure x86 assembly. When compiled and stripped, the binary is 784 bytes. Without the text prompts, it's a mere 712 bytes.
+A brainfuck interpreter written in pure x86 assembly. When compiled and stripped, the binary is 500 bytes.
 
 # Credits
 - Me (duh)
