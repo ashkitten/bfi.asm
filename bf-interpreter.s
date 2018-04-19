@@ -14,7 +14,15 @@ BITS 32
             dd      _start              ; e_version     ; p_filesz
             dd      _start              ; e_entry       ; p_memsz
             dd      4                   ; e_phoff       ; p_flags
-    times 8 db      0
+
+; empty space is a waste! let's put a subroutine in the elf header! :D
+bracketclose:
+    pop     ebx                         ; pop ebx
+    dec     ebx                         ; move back to previous character
+    dec     edx                         ; decrement bracket depth
+
+    jmp     post
+
             dw      0x34                ; e_ehsize
             dw      0x20                ; e_phentsize
             dw      1                   ; e_phnum
@@ -23,11 +31,11 @@ BITS 32
                                         ; e_shstrndx
 
 _start:
-    mov     edx, cisize                 ; length of code and input
     sub     esp, cisize * 2 + arraysize ; allocate code/input buffer to stack
 
-    mov     ecx, esp                    ; start at esp
-    add     ecx, arraysize              ; add to get address of code
+    mov     edx, cisize                 ; length of code and input
+
+    lea     ecx, [esp + arraysize]      ; start at esp
     xor     ebx, ebx                    ; xor ebx to 0 (stdin)
     mov     al, 3                       ; mov 3 to eax (sys_read)
     int     0x80                        ; syscall
@@ -39,12 +47,11 @@ _start:
     mov     al, 3                       ; mov 3 to eax (sys_read)
     int     0x80                        ; syscall
 
-    mov     byte[ecx + eax - 1], 0 ; strip last character (linefeed)
+    mov     byte[ecx + eax - 1], 0      ; strip last character (linefeed)
 
     ; initialize pointer registers
     mov     eax, esp
-    mov     ebx, esp
-    add     ebx, arraysize
+    lea     ebx, [esp + arraysize]
     ; no need to initialize ecx to the address of input,
     ; because it's already there
 
@@ -61,67 +68,38 @@ interpret:
     cmp     ebp, 0
     jne     .bracketskip
 
-    .default:
     ; case "+"
     cmp     byte[ebx], "+"              ; if buffer character is a "+"
-    je      plus
-    ; case "-"
-    cmp     byte[ebx], "-"              ; if buffer character is a "-"
-    je      minus
-    ; case "<"
-    cmp     byte[ebx], "<"              ; if buffer character is a "<"
-    je      arrayprev
-    ; case ">"
-    cmp     byte[ebx], ">"              ; if buffer character is a ">"
-    je      arraynext
-    ; case "."
-    cmp     byte[ebx], "."              ; if buffer character is a "."
-    je      print
-    ; case ","
-    cmp     byte[ebx], ","              ; if buffer character is a ","
-    je      getchar
-    ; case "["
-    cmp     byte[ebx], "["              ; if buffer character is a "["
-    je      bracketopen
-    ; case "]"
-    cmp     byte[ebx], "]"              ; if buffer character is a "]"
-    je      bracketclose
+    jne     .next1
 
-    ; no need to jump to post here because if it didn't match
-    ; the previous bracket cases, it won't match the next ones
-
-    .bracketskip:
-
-    ; case "["
-    cmp     byte[ebx], "["              ; if buffer character is a "["
-    je      bracketopen_skip
-    ; case "]"
-    cmp     byte[ebx], "]"              ; if buffer character is a "]"
-    je      bracketclose_skip
-
-    jmp     post
-
-plus:
     inc     byte[eax]                   ; add 1
 
-    jmp     post
+    .next1:
+    ; case "-"
+    cmp     byte[ebx], "-"              ; if buffer character is a "-"
+    jne     .next2
 
-minus:
     dec     byte[eax]                   ; subtract 1
 
-    jmp     post
+    .next2:
+    ; case "<"
+    cmp     byte[ebx], "<"              ; if buffer character is a "<"
+    jne     .next3
 
-arrayprev:
     dec     eax                         ; decrement array pointer
 
-    jmp     post
+    .next3:
+    ; case ">"
+    cmp     byte[ebx], ">"              ; if buffer character is a ">"
+    jne     .next4
 
-arraynext:
     inc     eax                         ; increment array pointer
 
-    jmp    post
+    .next4:
+    ; case "."
+    cmp     byte[ebx], "."              ; if buffer character is a "."
+    jne     .next5
 
-print:
     push    edx                         ; save bracket skip to stack
     xor     edx, edx                    ; xor edx to 0
     inc     edx                         ; increment edx to 1 (length)
@@ -130,8 +108,7 @@ print:
     lea     ecx, [eax]                  ; address of array pointer
 
     push    ebx                         ; save input pointer to stack
-    xor     ebx, ebx                    ; xor ebx to 0
-    inc     ebx                         ; increment ebx to 1 (stdout)
+    mov     ebx, edx                    ; mov edx (1) to ebx
 
     push    eax                         ; save array pointer to stack
     mov     eax, 4                      ; mov 4 to eax (sys_write)
@@ -143,41 +120,46 @@ print:
     pop     ecx
     pop     edx
 
-    jmp     post
-
-getchar:
+    .next5:
+    ; case ","
+    cmp     byte[ebx], ","              ; if buffer character is a ","
+    jne     .next6
     lea     esi, [ecx]                  ; prepare for movsb
     lea     edi, [eax]                  ; by loading esi and dsi with src and dest strings
     movsb                               ; mov string byte
     inc     ecx                         ; next input byte
 
-    jmp     post
+    .next6:
+    ; case "["
+    cmp     byte[ebx], "["              ; if buffer character is a "["
+    jne     .next7
 
-bracketopen:
     cmp     byte[eax], 0                ; if current array cell is 0
-    je      bracketopen_skip
+    je      .bracketopen_skip
 
     push    ebx                         ; else push ebx
     inc     edx                         ; increment bracket depth
 
-    jmp     post
-
-bracketclose:
-    pop     ebx                         ; pop ebx
-    dec     ebx                         ; move back to previous character
-    dec     edx                         ; decrement bracket depth
+    .next7:
+    ; case "]"
+    cmp     byte[ebx], "]"              ; if buffer character is a "]"
+    je      bracketclose
 
     jmp     post
 
-bracketopen_skip:
+    .bracketskip:
+
+    ; case "["
+    cmp     byte[ebx], "["              ; if buffer character is a "["
+    jne     .next8
+    .bracketopen_skip:
     inc     ebp                         ; increment bracket skip
 
-    jmp     post
-
-bracketclose_skip:
+    .next8:
+    ; case "]"
+    cmp     byte[ebx], "]"              ; if buffer character is a "]"
+    jne     post
     dec     ebp                         ; decrement bracket skip
-
-    ; no need to jmp to post because we're already there
 
 post:
     inc     ebx                        ; move to next code byte
