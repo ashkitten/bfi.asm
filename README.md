@@ -1,4 +1,4 @@
-A brainfuck interpreter written in pure x86 assembly. When built and stripped, the binary is 500 bytes.
+A brainfuck interpreter written in pure x86 assembly. The assembled binary is a mere 235 bytes.
 
 # About
 
@@ -39,6 +39,7 @@ online will need to be edited in order to work with this interpreter.
 
 # Credits
 - Me (duh)
+- [Blackle Mori](https://github.com/blackle): helped messing with the ELF header
 - My dad wanted to be mentioned in the credits so yeah
 
 # Similar projects

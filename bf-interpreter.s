@@ -1,36 +1,50 @@
-section .bss
-    array   resb 30000                  ; "standard" array size
-    code    resb 0x80000
-    input   resb 0x80000
-    size    equ  0x80000
+%define arraysize 30000
+%define cisize 0x80000
 
-section .text
-    global  _start
+BITS 32
+
+            org     0x00010000
+
+            db      0x7F, "ELF"         ; e_ident
+            dd      1                                   ; p_type
+            dd      0                                   ; p_offset
+            dd      $$                                  ; p_vaddr
+            dw      2                   ; e_type        ; p_paddr
+            dw      3                   ; e_machine
+            dd      _start              ; e_version     ; p_filesz
+            dd      _start              ; e_entry       ; p_memsz
+            dd      4                   ; e_phoff       ; p_flags
+    times 8 db      0
+            dw      0x34                ; e_ehsize
+            dw      0x20                ; e_phentsize
+            dw      1                   ; e_phnum
+                                        ; e_shentsize
+                                        ; e_shnum
+                                        ; e_shstrndx
 
 _start:
-    mov     edx, size                   ; length of code and input
+    mov     edx, cisize                 ; length of code and input
+    sub     esp, cisize * 2 + arraysize ; allocate code/input buffer to stack
 
-    ; the reason we use regular 32-bit registers here is because if we use
-    ; 8-bit registers it will screw with the return value of the syscall
-    ; and not reset the rest of eax to 0 like we need
-
-    mov     ecx, code                   ; address of code
+    mov     ecx, esp                    ; start at esp
+    add     ecx, arraysize              ; add to get address of code
     xor     ebx, ebx                    ; xor ebx to 0 (stdin)
-    mov     eax, 3                      ; mov 3 to eax (sys_read)
+    mov     al, 3                       ; mov 3 to eax (sys_read)
     int     0x80                        ; syscall
 
     ; no need to strip linefeed because it's just code
 
-    mov     ecx, input                  ; address of input
+    add     ecx, cisize                 ; add to get address of input
     xor     ebx, ebx                    ; xor ebx to 0 (stdin)
-    mov     eax, 3                      ; mov 3 to eax (sys_read)
+    mov     al, 3                       ; mov 3 to eax (sys_read)
     int     0x80                        ; syscall
 
-    mov     byte[input + eax - 1], 0    ; strip last character (linefeed)
+    mov     byte[ecx + eax - 1], 0 ; strip last character (linefeed)
 
     ; initialize pointer registers
-    mov     eax, array
-    mov     ebx, code
+    mov     eax, esp
+    mov     ebx, esp
+    add     ebx, arraysize
     ; no need to initialize ecx to the address of input,
     ; because it's already there
 
@@ -98,12 +112,12 @@ minus:
     jmp     post
 
 arrayprev:
-    dec     eax                         ; decrease array pointer
+    dec     eax                         ; decrement array pointer
 
     jmp     post
 
 arraynext:
-    inc     eax                         ; increase array pointer
+    inc     eax                         ; increment array pointer
 
     jmp    post
 
@@ -117,7 +131,7 @@ print:
 
     push    ebx                         ; save input pointer to stack
     xor     ebx, ebx                    ; xor ebx to 0
-    inc     ebx                         ; increase ebx to 1 (stdout)
+    inc     ebx                         ; increment ebx to 1 (stdout)
 
     push    eax                         ; save array pointer to stack
     mov     eax, 4                      ; mov 4 to eax (sys_write)
@@ -144,24 +158,24 @@ bracketopen:
     je      bracketopen_skip
 
     push    ebx                         ; else push ebx
-    inc     edx                         ; increase bracket depth
+    inc     edx                         ; increment bracket depth
 
     jmp     post
 
 bracketclose:
     pop     ebx                         ; pop ebx
     dec     ebx                         ; move back to previous character
-    dec     edx                         ; decrease bracket depth
+    dec     edx                         ; decrement bracket depth
 
     jmp     post
 
 bracketopen_skip:
-    inc     ebp                         ; increase bracket skip
+    inc     ebp                         ; increment bracket skip
 
     jmp     post
 
 bracketclose_skip:
-    dec     ebp                         ; decrease bracket skip
+    dec     ebp                         ; decrement bracket skip
 
     ; no need to jmp to post because we're already there
 
@@ -175,3 +189,5 @@ exit:
     inc     eax                         ; increment eax to 1 (sys_exit)
     xor     ebx, ebx                    ; xor ebx to 0 (exit code 0)
     int     0x80                        ; syscall
+
+filesize      equ     $ - $$

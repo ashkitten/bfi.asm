@@ -1,17 +1,13 @@
 .SILENT:
 
 bf-interpreter: bf-interpreter.s
-	nasm -f elf -F dwarf -g bf-interpreter.s
-	ld -m elf_i386 -o bf-interpreter bf-interpreter.o --whole-archive
+	nasm -f bin -o bf-interpreter -l bf-interpreter.list bf-interpreter.s
+	chmod +x bf-interpreter
 
 run: bf-interpreter
 	./bf-interpreter
 
-stripped: bf-interpreter.s
-	nasm -f elf -F dwarf bf-interpreter.s
-	ld -m elf_i386 -s -o bf-interpreter bf-interpreter.o
-
 .PHONY: clean
 
 clean:
-	rm bf-interpreter.o bf-interpreter
+	rm bf-interpreter
