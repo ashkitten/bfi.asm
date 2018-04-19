@@ -3,36 +3,31 @@
 
 BITS 32
 
-            org     0x00010000
+    org     0x00010000
 
-            db      0x7F, "ELF"         ; e_ident
-            dd      1                                   ; p_type
-            dd      0                                   ; p_offset
-            dd      $$                                  ; p_vaddr
-            dw      2                   ; e_type        ; p_paddr
-            dw      3                   ; e_machine
-            dd      _start              ; e_version     ; p_filesz
-            dd      _start              ; e_entry       ; p_memsz
-            dd      4                   ; e_phoff       ; p_flags
+    db      0x7F, "ELF"                 ; e_ident
+    dd      1                                           ; p_type
+    dd      0                                           ; p_offset
+    dd      $$                                          ; p_vaddr
+    dw      2                           ; e_type        ; p_paddr
+    dw      3                           ; e_machine
+    dd      _start                      ; e_version     ; p_filesz
+    dd      _start                      ; e_entry       ; p_memsz
+    dd      4                           ; e_phoff       ; p_flags
 
 ; empty space is a waste! let's put a subroutine in the elf header! :D
-bracketclose:
-    pop     ebx                         ; pop ebx
-    dec     ebx                         ; move back to previous character
-    dec     edx                         ; decrement bracket depth
+_start:
+    sub     esp, cisize * 2 + arraysize ; allocate code/input buffer to stack
+    jmp     _main
 
-    jmp     post
-
-            dw      0x34                ; e_ehsize
-            dw      0x20                ; e_phentsize
-            dw      1                   ; e_phnum
+    dw      0x34                        ; e_ehsize
+    dw      0x20                        ; e_phentsize
+    dw      1                           ; e_phnum
                                         ; e_shentsize
                                         ; e_shnum
                                         ; e_shstrndx
 
-_start:
-    sub     esp, cisize * 2 + arraysize ; allocate code/input buffer to stack
-
+_main:
     mov     edx, cisize                 ; length of code and input
 
     lea     ecx, [esp + arraysize]      ; start at esp
@@ -65,40 +60,40 @@ interpret:
     ; edx tells us the bracket depth
     ; we abuse ebp to serve as a bracket skip indicator
 
-    cmp     ebp, 0
-    jne     .bracketskip
+    cmp     ebp, 0                      ; check if ebp is zero
+    jne     .bracketskip                ; if it's not, skip to the bracketskip section
 
     ; case "+"
-    cmp     byte[ebx], "+"              ; if buffer character is a "+"
-    jne     .next1
+    cmp     byte[ebx], "+"              ; check if buffer character is a "+"
+    jne     .next1                      ; if not, skip
 
     inc     byte[eax]                   ; add 1
 
     .next1:
     ; case "-"
-    cmp     byte[ebx], "-"              ; if buffer character is a "-"
-    jne     .next2
+    cmp     byte[ebx], "-"              ; check if buffer character is a "-"
+    jne     .next2                      ; if not, skip
 
     dec     byte[eax]                   ; subtract 1
 
     .next2:
     ; case "<"
-    cmp     byte[ebx], "<"              ; if buffer character is a "<"
-    jne     .next3
+    cmp     byte[ebx], "<"              ; check if buffer character is a "<"
+    jne     .next3                      ; if not, skip
 
     dec     eax                         ; decrement array pointer
 
     .next3:
     ; case ">"
-    cmp     byte[ebx], ">"              ; if buffer character is a ">"
-    jne     .next4
+    cmp     byte[ebx], ">"              ; check if buffer character is a ">"
+    jne     .next4                      ; if not, skip
 
     inc     eax                         ; increment array pointer
 
     .next4:
     ; case "."
-    cmp     byte[ebx], "."              ; if buffer character is a "."
-    jne     .next5
+    cmp     byte[ebx], "."              ; check if buffer character is a "."
+    jne     .next5                      ; if not, skip
 
     push    edx                         ; save bracket skip to stack
     xor     edx, edx                    ; xor edx to 0
@@ -122,8 +117,9 @@ interpret:
 
     .next5:
     ; case ","
-    cmp     byte[ebx], ","              ; if buffer character is a ","
-    jne     .next6
+    cmp     byte[ebx], ","              ; check if buffer character is a ","
+    jne     .next6                      ; if not, skip
+
     lea     esi, [ecx]                  ; prepare for movsb
     lea     edi, [eax]                  ; by loading esi and dsi with src and dest strings
     movsb                               ; mov string byte
@@ -131,40 +127,43 @@ interpret:
 
     .next6:
     ; case "["
-    cmp     byte[ebx], "["              ; if buffer character is a "["
-    jne     .next7
+    cmp     byte[ebx], "["              ; check if buffer character is a "["
+    jne     .next7                      ; if not, skip
 
     cmp     byte[eax], 0                ; if current array cell is 0
-    je      .bracketopen_skip
+    je      .bracketopen_skip           ; jump to .bracketopen_skip
 
     push    ebx                         ; else push ebx
     inc     edx                         ; increment bracket depth
 
     .next7:
     ; case "]"
-    cmp     byte[ebx], "]"              ; if buffer character is a "]"
-    je      bracketclose
+    cmp     byte[ebx], "]"              ; check if buffer character is a "]"
+    jne     post                        ; if not, skip to post
+    pop     ebx                         ; pop ebx
+    dec     ebx                         ; move back to previous character
+    dec     edx                         ; decrement bracket depth
 
-    jmp     post
+    jmp     post                        ; jump to post so we don't hit bracketskip stuff
 
     .bracketskip:
 
     ; case "["
-    cmp     byte[ebx], "["              ; if buffer character is a "["
-    jne     .next8
+    cmp     byte[ebx], "["              ; check if buffer character is a "["
+    jne     .next8                      ; if not, skip
     .bracketopen_skip:
     inc     ebp                         ; increment bracket skip
 
     .next8:
     ; case "]"
-    cmp     byte[ebx], "]"              ; if buffer character is a "]"
-    jne     post
+    cmp     byte[ebx], "]"              ; check if buffer character is a "]"
+    jne     post                        ; if not, skip
     dec     ebp                         ; decrement bracket skip
 
 post:
-    inc     ebx                        ; move to next code byte
-    cmp     byte[ebx], 0
-    jne     interpret
+    inc     ebx                         ; move to next code byte
+    cmp     byte[ebx], 0                ; check if this is the last byte
+    jne     interpret                   ; if not, go to interpret
 
 exit:
     xor     eax, eax                    ; xor eax to 0
