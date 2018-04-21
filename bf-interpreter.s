@@ -31,110 +31,101 @@ _main:
     mov     edx, cisize                 ; length of code and input
 
     lea     ecx, [esp + arraysize]      ; start at esp
-    xor     ebx, ebx                    ; xor ebx to 0 (stdin)
-    mov     al, 3                       ; mov 3 to eax (sys_read)
+    mov     al, 3                       ; mov 3 to al (sys_read)
     int     0x80                        ; syscall
 
     ; no need to strip linefeed because it's just code
 
     add     ecx, cisize                 ; add to get address of input
     xor     ebx, ebx                    ; xor ebx to 0 (stdin)
-    mov     al, 3                       ; mov 3 to eax (sys_read)
+    mov     al, 3                       ; mov 3 to al (sys_read)
     int     0x80                        ; syscall
 
     mov     byte[ecx + eax - 1], 0      ; strip last character (linefeed)
 
     ; initialize pointer registers
-    mov     eax, esp
+    mov     edi, esp
+    mov     esi, ecx
     lea     ebx, [esp + arraysize]
-    ; no need to initialize ecx to the address of input,
-    ; because it's already there
-
     ; starting bracket depth is 0
+    xor     ecx, ecx
+    ; edx is always 1 (length of sys_write call)
     xor     edx, edx
+    inc     edx
 
 interpret:
-    ; eax points to the position in the array
+    ; edi points to the position in the array
     ; ebx points to the position in the code
-    ; ecx points to the position in the input
-    ; edx tells us the bracket depth
-    ; we abuse ebp to serve as a bracket skip indicator
+    ; esi points to the position in the input
+    ; ecx tells us the bracket depth
+    ; ebp tells us the bracket skip depth
 
-    cmp     ebp, 0                      ; check if ebp is zero
-    jne     .bracketskip                ; if it's not, skip to the bracketskip section
+    cmp     ebp, 0                      ; check if bracket skip depth is zero
+    jne     .bracketskip                ; if it's not, skip to .bracketskip section
 
     ; case "+"
     cmp     byte[ebx], "+"              ; check if buffer character is a "+"
     jne     .next1                      ; if not, skip
 
-    inc     byte[eax]                   ; add 1
+    inc     byte[edi]                   ; add 1
 
     .next1:
     ; case "-"
     cmp     byte[ebx], "-"              ; check if buffer character is a "-"
     jne     .next2                      ; if not, skip
 
-    dec     byte[eax]                   ; subtract 1
+    dec     byte[edi]                   ; subtract 1
 
     .next2:
     ; case "<"
     cmp     byte[ebx], "<"              ; check if buffer character is a "<"
     jne     .next3                      ; if not, skip
 
-    dec     eax                         ; decrement array pointer
+    dec     edi                         ; decrement array pointer
 
     .next3:
     ; case ">"
     cmp     byte[ebx], ">"              ; check if buffer character is a ">"
     jne     .next4                      ; if not, skip
 
-    inc     eax                         ; increment array pointer
+    inc     edi                         ; increment array pointer
 
     .next4:
     ; case "."
     cmp     byte[ebx], "."              ; check if buffer character is a "."
     jne     .next5                      ; if not, skip
 
-    push    edx                         ; save bracket skip to stack
-    xor     edx, edx                    ; xor edx to 0
-    inc     edx                         ; increment edx to 1 (length)
+    ; edx is already 1 (length)
 
-    push    ecx                         ; save input pointer to stack
-    lea     ecx, [eax]                  ; address of array pointer
+    lea     ecx, [edi]                  ; address of array pointer
 
     push    ebx                         ; save input pointer to stack
     mov     ebx, edx                    ; mov edx (1) to ebx
 
-    push    eax                         ; save array pointer to stack
-    mov     eax, 4                      ; mov 4 to eax (sys_write)
+    mov     al, 4                       ; mov 4 to al (sys_write)
     int     0x80                        ; syscall
 
     ; restore register values
-    pop     eax
     pop     ebx
-    pop     ecx
-    pop     edx
 
     .next5:
     ; case ","
     cmp     byte[ebx], ","              ; check if buffer character is a ","
     jne     .next6                      ; if not, skip
 
-    lea     esi, [ecx]                  ; prepare for movsb
-    lea     edi, [eax]                  ; by loading esi and dsi with src and dest strings
-    movsb                               ; mov string byte
-    inc     ecx                         ; next input byte
+    movsb                               ; mov string byte from esi to edi
+    dec     edi                         ; prev array byte (movsb increments both)
 
     .next6:
     ; case "["
     cmp     byte[ebx], "["              ; check if buffer character is a "["
     jne     .next7                      ; if not, skip
 
-    cmp     byte[eax], 0                ; if current array cell is 0
+    cmp     byte[edi], 0                ; if current array cell is 0
     je      .bracketopen_skip           ; jump to .bracketopen_skip
 
     push    ebx                         ; else push ebx
-    inc     edx                         ; increment bracket depth
+    inc     ecx                         ; increment bracket depth
 
     .next7:
     ; case "]"
@@ -142,7 +133,7 @@ interpret:
     jne     post                        ; if not, skip to post
     pop     ebx                         ; pop ebx
     dec     ebx                         ; move back to previous character
-    dec     edx                         ; decrement bracket depth
+    dec     ecx                         ; decrement bracket depth
 
     jmp     post                        ; jump to post so we don't hit bracketskip stuff
 
@@ -166,8 +157,7 @@ post:
     jne     interpret                   ; if not, go to interpret
 
 exit:
-    xor     eax, eax                    ; xor eax to 0
-    inc     eax                         ; increment eax to 1 (sys_exit)
+    mov     al, 1                       ; mov 1 to al (sys_exit)
     xor     ebx, ebx                    ; xor ebx to 0 (exit code 0)
     int     0x80                        ; syscall
 

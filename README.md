@@ -1,4 +1,4 @@
-A brainfuck interpreter written in pure x86 assembly. The assembled binary is a mere 208 bytes.
+A brainfuck interpreter written in pure x86 assembly. The assembled binary is a mere 194 bytes!
 
 # About
 
